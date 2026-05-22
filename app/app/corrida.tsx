@@ -3,12 +3,20 @@ import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
   useWindowDimensions, ImageBackground, Image,
+  ScrollView,
 } from 'react-native';
 import { useFonts } from 'expo-font';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import LogoNerdyDerby from '../assets/images/Logo_Nerdy_Derby.svg';
 import LogoFabLab from '../assets/images/Logo_Fab_LAB_Uni_Facens.svg';
+
+type Carrinho = {
+  id: string;
+  numero: string;
+  nomePiloto: string;
+  gifUri: string;
+};
 
 export default function Corrida() {
   const { circuitoId } = useLocalSearchParams<{ circuitoId: string }>();
@@ -18,10 +26,14 @@ export default function Corrida() {
   const [nomeCircuito, setNomeCircuito] = useState('');
   const [corNome, setCorNome]           = useState('#ffffff');
   const [fotoFundo, setFotoFundo]       = useState<string | null>(null);
+  const [carrinhos, setCarrinhos]       = useState<Carrinho[]>([]);
+  const [selecionados, setSelecionados] = useState<string[]>([]);
+  const [contagem, setContagem]         = useState<string | null>(null);
 
   const [tempo, setTempo]       = useState(0); // em milissegundos
   const [rodando, setRodando]   = useState(false);
   const intervalo = useRef<ReturnType<typeof setInterval> | null>(null);
+  const contagemIntervalo = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     const carregar = async () => {
@@ -29,15 +41,53 @@ export default function Corrida() {
       if (json) {
         const lista = JSON.parse(json);
         const c = lista.find((x: any) => x.id === circuitoId);
-        if (c) { setNomeCircuito(c.nome); setCorNome(c.corNome); setFotoFundo(c.fotoFundo); }
+        if (c) {
+          setNomeCircuito(c.nome);
+          setCorNome(c.corNome);
+          setFotoFundo(c.fotoFundo);
+          setCarrinhos(c.carrinhos ?? []);
+        }
       }
     };
     carregar();
-  }, []);
 
-  const iniciar = () => {
+    return () => {
+      if (intervalo.current) clearInterval(intervalo.current);
+      limparContagem();
+    };
+  }, [circuitoId]);
+
+  const toggleSelecionado = (id: string) => {
+    setSelecionados(prev => {
+      if (prev.includes(id)) return prev.filter(x => x !== id);
+      if (prev.length >= 3) return prev;
+      return [...prev, id];
+    });
+  };
+
+  const iniciarCronometro = () => {
     setRodando(true);
     intervalo.current = setInterval(() => setTempo(t => t + 10), 10);
+  };
+
+  const iniciar = () => {
+    if (contagem || rodando) return;
+
+    const passos = ['3', '2', '1', 'GO'];
+    let indice = 0;
+    setContagem(passos[indice]);
+
+    contagemIntervalo.current = setInterval(() => {
+      indice += 1;
+      if (indice < passos.length) {
+        setContagem(passos[indice]);
+      } else {
+        if (contagemIntervalo.current) clearInterval(contagemIntervalo.current);
+        contagemIntervalo.current = null;
+        setContagem(null);
+        iniciarCronometro();
+      }
+    }, 800);
   };
 
   const pausar = () => {
@@ -49,6 +99,12 @@ export default function Corrida() {
     pausar();
     setTempo(0);
   };
+
+  function limparContagem() {
+    if (contagemIntervalo.current) clearInterval(contagemIntervalo.current);
+    contagemIntervalo.current = null;
+    setContagem(null);
+  }
 
   const formatar = (ms: number) => {
     const min  = Math.floor(ms / 60000).toString().padStart(2, '0');
@@ -82,25 +138,66 @@ export default function Corrida() {
         <Text style={[styles.nomeCircuito, { color: corNome }]}>#{nomeCircuito}</Text>
         <Text style={styles.labelCorrida}>CORRIDA EM ANDAMENTO</Text>
 
-        {/* Cronômetro */}
-        <View style={styles.cronometroBox}>
-          <Text style={styles.cronometroTexto}>{formatar(tempo)}</Text>
-        </View>
+        <View style={styles.mainContent}>
+          <View style={styles.sidebar}>
+            <Text style={styles.sidebarTitle}>PARTICIPANTES</Text>
+            <Text style={styles.sidebarSubtitle}>{selecionados.length}/3 selecionados</Text>
+            <ScrollView style={styles.sidebarScroll} contentContainerStyle={styles.sidebarScrollContent}>
+              {carrinhos.length === 0 ? (
+                <Text style={styles.sidebarEmpty}>Nenhum carrinho inscrito neste circuito.</Text>
+              ) : (
+                carrinhos.map((c) => {
+                  const ativo = selecionados.includes(c.id);
+                  return (
+                    <TouchableOpacity
+                      key={c.id}
+                      activeOpacity={0.8}
+                      style={[styles.sidebarItem, ativo && styles.sidebarItemSelected]}
+                      onPress={() => toggleSelecionado(c.id)}
+                    >
+                      <View style={styles.sidebarItemTextGroup}>
+                        <Text style={styles.sidebarItemTexto}>#{c.numero}</Text>
+                        <Text style={styles.sidebarItemSubtexto}>{c.nomePiloto}</Text>
+                      </View>
+                      <Text style={styles.sidebarItemBadge}>{ativo ? '✓' : '○'}</Text>
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </ScrollView>
+            {carrinhos.length > 0 ? (
+              <Text style={styles.sidebarNote}>
+                Toque para selecionar até 3 participantes antes de iniciar a corrida.
+              </Text>
+            ) : null}
+          </View>
 
-        {/* Controles */}
-        <View style={styles.controlesRow}>
-          {!rodando ? (
-            <TouchableOpacity style={[styles.botaoControle, { backgroundColor: 'rgba(0,180,80,0.85)' }]} onPress={iniciar}>
-              <Text style={styles.botaoControleTexto}>▶ INICIAR</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity style={[styles.botaoControle, { backgroundColor: 'rgba(200,100,0,0.85)' }]} onPress={pausar}>
-              <Text style={styles.botaoControleTexto}>⏸ PAUSAR</Text>
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity style={[styles.botaoControle, { backgroundColor: 'rgba(180,0,0,0.85)' }]} onPress={resetar}>
-            <Text style={styles.botaoControleTexto}>↺ RESET</Text>
-          </TouchableOpacity>
+          <View style={styles.corridaContent}>
+            <View style={styles.cronometroBox}>
+              <Text style={styles.cronometroTexto}>{formatar(tempo)}</Text>
+            </View>
+
+            {contagem ? (
+              <View style={styles.countdownOverlay}>
+                <Text style={styles.countdownText}>{contagem}</Text>
+              </View>
+            ) : null}
+
+            <View style={styles.controlesRow}>
+              {!rodando ? (
+                <TouchableOpacity style={[styles.botaoControle, { backgroundColor: 'rgba(0,180,80,0.85)' }]} onPress={iniciar}>
+                  <Text style={styles.botaoControleTexto}>▶ INICIAR</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity style={[styles.botaoControle, { backgroundColor: 'rgba(200,100,0,0.85)' }]} onPress={pausar}>
+                  <Text style={styles.botaoControleTexto}>⏸ PAUSAR</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={[styles.botaoControle, { backgroundColor: 'rgba(180,0,0,0.85)' }]} onPress={resetar}>
+                <Text style={styles.botaoControleTexto}>↺ RESET</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
 
         <View style={styles.botaoVoltarContainer}>
@@ -131,6 +228,39 @@ const styles = StyleSheet.create({
   },
   cronometroTexto: { color: '#fff', fontSize: 64, fontFamily: 'MinhaFonte', letterSpacing: 4 },
   controlesRow: { flexDirection: 'row', gap: 20, zIndex: 10 },
+  mainContent: { width: '100%', flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16, paddingHorizontal: 16, paddingTop: 24, zIndex: 10 },
+  sidebar: {
+    width: 260, maxWidth: '34%', minWidth: 220,
+    backgroundColor: 'rgba(0,0,0,0.72)', borderRadius: 18,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    padding: 16, marginBottom: 24,
+  },
+  sidebarTitle: { color: '#fff', fontSize: 18, fontFamily: 'MinhaFonte', marginBottom: 6 },
+  sidebarSubtitle: { color: 'rgba(255,255,255,0.7)', fontSize: 12, fontFamily: 'MinhaFonte', marginBottom: 10 },
+  sidebarScroll: { maxHeight: 320 },
+  sidebarScrollContent: { paddingBottom: 8 },
+  sidebarEmpty: { color: 'rgba(255,255,255,0.6)', fontFamily: 'MinhaFonte', fontSize: 14 },
+  sidebarItem: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 12, paddingHorizontal: 12, borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+    marginBottom: 10,
+  },
+  sidebarItemSelected: {
+    backgroundColor: 'rgba(0,140,255,0.22)', borderColor: 'rgba(0,190,255,0.45)',
+  },
+  sidebarItemTextGroup: { flex: 1, marginRight: 10 },
+  sidebarItemTexto: { color: '#fff', fontFamily: 'MinhaFonte', fontSize: 14 },
+  sidebarItemSubtexto: { color: 'rgba(255,255,255,0.65)', fontSize: 12, fontFamily: 'MinhaFonte', marginTop: 2 },
+  sidebarItemBadge: { color: '#8de7ff', fontSize: 18, fontFamily: 'MinhaFonte' },
+  sidebarNote: { color: 'rgba(255,255,255,0.72)', fontSize: 12, marginTop: 6, fontFamily: 'MinhaFonte', textAlign: 'center' },
+  corridaContent: { flex: 1, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  countdownOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 16,
+    justifyContent: 'center', alignItems: 'center', zIndex: 20,
+  },
+  countdownText: { color: '#fff', fontSize: 64, fontFamily: 'MinhaFonte', letterSpacing: 6 },
   botaoControle: {
     borderRadius: 10, paddingVertical: 16, paddingHorizontal: 32,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
