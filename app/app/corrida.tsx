@@ -29,6 +29,8 @@ export default function Corrida() {
   const [carrinhos, setCarrinhos]       = useState<Carrinho[]>([]);
   const [selecionados, setSelecionados] = useState<string[]>([]);
   const [contagem, setContagem]         = useState<string | null>(null);
+  const PISTAS = [1, 2, 3];
+  const [assignedLanes, setAssignedLanes] = useState<Record<string, number | null>>({});
 
   const [tempo, setTempo]       = useState(0); // em milissegundos
   const [rodando, setRodando]   = useState(false);
@@ -61,7 +63,24 @@ export default function Corrida() {
     setSelecionados(prev => {
       if (prev.includes(id)) return prev.filter(x => x !== id);
       if (prev.length >= 3) return prev;
+      // when selecting, optimistically assign first free lane
+      setAssignedLanes(prevLanes => {
+        const used = Object.values(prevLanes).filter(Boolean) as number[];
+        const free = PISTAS.find(p => !used.includes(p)) ?? null;
+        return { ...prevLanes, [id]: free };
+      });
       return [...prev, id];
+    });
+  };
+
+  const assignLane = (id: string, pista: number | null) => {
+    setAssignedLanes(prev => {
+      // if pista is already used by someone else, ignore
+      if (pista !== null) {
+        const usedBy = Object.entries(prev).find(([k, v]) => v === pista && k !== id);
+        if (usedBy) return prev;
+      }
+      return { ...prev, [id]: pista };
     });
   };
 
@@ -158,8 +177,30 @@ export default function Corrida() {
                       <View style={styles.sidebarItemTextGroup}>
                         <Text style={styles.sidebarItemTexto}>#{c.numero}</Text>
                         <Text style={styles.sidebarItemSubtexto}>{c.nomePiloto}</Text>
+                        {ativo ? (
+                          <View style={styles.laneRow}>
+                            {PISTAS.map(p => {
+                              const usedByOther = Object.entries(assignedLanes).find(([k, v]) => v === p && k !== c.id);
+                              const selected = assignedLanes[c.id] === p;
+                              return (
+                                <TouchableOpacity
+                                  key={p}
+                                  style={[
+                                    styles.laneButton,
+                                    selected && styles.laneButtonSelected,
+                                    usedByOther && !selected && styles.laneButtonDisabled,
+                                  ]}
+                                  disabled={!!usedByOther && !selected}
+                                  onPress={() => assignLane(c.id, selected ? null : p)}
+                                >
+                                  <Text style={[styles.laneButtonText, selected && styles.laneButtonTextSelected]}>{p}</Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        ) : null}
                       </View>
-                      <Text style={styles.sidebarItemBadge}>{ativo ? '✓' : '○'}</Text>
+                      <Text style={styles.sidebarItemBadge}>{ativo ? (assignedLanes[c.id] ? `L${assignedLanes[c.id]}` : '✓') : '○'}</Text>
                     </TouchableOpacity>
                   );
                 })
@@ -180,6 +221,22 @@ export default function Corrida() {
             {contagem ? (
               <View style={styles.countdownOverlay}>
                 <Text style={styles.countdownText}>{contagem}</Text>
+              </View>
+            ) : null}
+
+            {rodando && selecionados.length > 0 ? (
+              <View style={styles.selectedRow}>
+                {selecionados.map(id => {
+                  const c = carrinhos.find(x => x.id === id);
+                  const lane = assignedLanes[id];
+                  return (
+                    <View key={id} style={styles.selectedCard}>
+                      <Text style={styles.selectedLane}>PISTA {lane ?? '-'}</Text>
+                      <Text style={styles.selectedNumero}>#{c?.numero}</Text>
+                      <Text style={styles.selectedNome}>{c?.nomePiloto}</Text>
+                    </View>
+                  );
+                })}
               </View>
             ) : null}
 
@@ -261,6 +318,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center', zIndex: 20,
   },
   countdownText: { color: '#fff', fontSize: 64, fontFamily: 'MinhaFonte', letterSpacing: 6 },
+  laneRow: { flexDirection: 'row', marginTop: 8, gap: 8 },
+  laneButton: {
+    minWidth: 34, height: 34, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', backgroundColor: 'rgba(255,255,255,0.03)'
+  },
+  laneButtonSelected: { backgroundColor: 'rgba(0,180,80,0.85)', borderColor: 'rgba(0,255,150,0.6)' },
+  laneButtonDisabled: { opacity: 0.35 },
+  laneButtonText: { color: 'rgba(255,255,255,0.9)', fontFamily: 'MinhaFonte' },
+  laneButtonTextSelected: { color: '#fff' },
+  selectedRow: { flexDirection: 'row', gap: 14, marginBottom: 18, alignItems: 'center' },
+  selectedCard: {
+    minWidth: 120, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 12,
+    backgroundColor: 'rgba(10,10,10,0.6)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)'
+  },
+  selectedLane: { color: '#8fe7ff', fontFamily: 'MinhaFonte', fontSize: 13, marginBottom: 6 },
+  selectedNumero: { color: '#fff', fontFamily: 'MinhaFonte', fontSize: 20 },
+  selectedNome: { color: 'rgba(255,255,255,0.75)', fontFamily: 'MinhaFonte', fontSize: 12, marginTop: 2 },
   botaoControle: {
     borderRadius: 10, paddingVertical: 16, paddingHorizontal: 32,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
