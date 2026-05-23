@@ -89,8 +89,10 @@ export default function Corrida() {
     intervalo.current = setInterval(() => setTempo(t => t + 10), 10);
   };
 
+  const temTodasPistasSelecionadas = selecionados.length === 3 && selecionados.every(id => assignedLanes[id] != null);
+
   const iniciar = () => {
-    if (contagem || rodando) return;
+    if (contagem || rodando || !temTodasPistasSelecionadas) return;
 
     const passos = ['3', '2', '1', 'GO'];
     let indice = 0;
@@ -242,7 +244,14 @@ export default function Corrida() {
 
             <View style={styles.controlesRow}>
               {!rodando ? (
-                <TouchableOpacity style={[styles.botaoControle, { backgroundColor: 'rgba(0,180,80,0.85)' }]} onPress={iniciar}>
+                <TouchableOpacity
+                  style={[
+                    styles.botaoControle,
+                    temTodasPistasSelecionadas ? { backgroundColor: 'rgba(0,180,80,0.85)' } : styles.botaoControleDisabled,
+                  ]}
+                  onPress={iniciar}
+                  disabled={!temTodasPistasSelecionadas}
+                >
                   <Text style={styles.botaoControleTexto}>▶ INICIAR</Text>
                 </TouchableOpacity>
               ) : (
@@ -254,6 +263,9 @@ export default function Corrida() {
                 <Text style={styles.botaoControleTexto}>↺ RESET</Text>
               </TouchableOpacity>
             </View>
+            {!temTodasPistasSelecionadas && !rodando ? (
+              <Text style={styles.startHint}>Selecione 3 carrinhos e atribua as 3 pistas antes de iniciar.</Text>
+            ) : null}
           </View>
         </View>
 
@@ -340,6 +352,8 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
   },
   botaoControleTexto: { color: '#fff', fontSize: 20, fontFamily: 'MinhaFonte' },
+  botaoControleDisabled: { backgroundColor: 'rgba(100,100,100,0.45)', borderColor: 'rgba(255,255,255,0.1)' },
+  startHint: { color: 'rgba(255,255,255,0.75)', fontSize: 12, fontFamily: 'MinhaFonte', marginTop: 10, textAlign: 'center' },
   fabLabContainer: { position: 'absolute', bottom: 24, right: 24, zIndex: 10 },
   botaoVoltarContainer: { position: 'absolute', bottom: 24, left: 28, zIndex: 10 },
 });
